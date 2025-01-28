@@ -9,12 +9,12 @@ from facelib.parsing import init_parsing_model
 from facelib.utils.misc import img2tensor, imwrite, is_gray, bgr2gray, adain_npy
 from basicsr.utils.download_util import load_file_from_url
 from basicsr.utils.misc import get_device
-
+# 人脸恢复助手（FaceRestoreHelper），用于从图像中检测、裁剪和恢复人脸，并进行一系列处理，如人脸对齐、图像增强、背景替换等。
 dlib_model_url = {
     'face_detector': 'https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/mmod_human_face_detector-4cb19393.dat',
     'shape_predictor_5': 'https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/shape_predictor_5_face_landmarks-c4b1e980.dat'
 }
-
+# 提供了 Dlib 模型文件的 URL，'face_detector' 用于人脸检测，'shape_predictor_5' 用于获取人脸的 5 个关键点（眼睛、鼻子、嘴巴角）。
 def get_largest_face(det_faces, h, w):
 
     def get_location(val, length):

@@ -12,6 +12,17 @@ from facelib.utils.misc import is_gray
 
 from basicsr.utils.registry import ARCH_REGISTRY
 
+
+## 调试
+import debugpy
+try:
+    # 5678 is the default attach port in the VS Code debug configurations. Unless a host and port are specified, host defaults to 127.0.0.1
+    debugpy.listen(("localhost", 9501))
+    print("Waiting for debugger attach")
+    debugpy.wait_for_client()
+except Exception as e:
+    pass
+
 pretrain_model_url = {
     'restoration': 'https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth',
 }
@@ -20,9 +31,10 @@ def set_realesrgan():
     from basicsr.archs.rrdbnet_arch import RRDBNet
     from basicsr.utils.realesrgan_utils import RealESRGANer
 
-    use_half = False
+    use_half = False # use_half 变量初始化为 False，表示默认不使用半精度（FP16）。
     if torch.cuda.is_available(): # set False in CPU/MPS mode
         no_half_gpu_list = ['1650', '1660'] # set False for GPUs that don't support f16
+        # 包含一些不支持半精度计算的 GPU 型号（如 GTX 1650 和 GTX 1660）。这些 GPU 不支持 FP16 计算，因此我们不打算在这些 GPU 上启用半精度。
         if not True in [gpu in torch.cuda.get_device_name(0) for gpu in no_half_gpu_list]:
             use_half = True
 
@@ -73,17 +85,20 @@ if __name__ == '__main__':
     parser.add_argument('--detection_model', type=str, default='retinaface_resnet50', 
             help='Face detector. Optional: retinaface_resnet50, retinaface_mobile0.25, YOLOv5l, YOLOv5n, dlib. \
                 Default: retinaface_resnet50')
+    # For whole image
+    # Add '--bg_upsampler realesrgan' to enhance the background regions with Real-ESRGAN
+    # Add '--face_upsample' to further upsample restorated face with Real-ESRGAN
     parser.add_argument('--bg_upsampler', type=str, default='None', help='Background upsampler. Optional: realesrgan')
     parser.add_argument('--face_upsample', action='store_true', help='Face upsampler after enhancement. Default: False')
-    parser.add_argument('--bg_tile', type=int, default=400, help='Tile size for background sampler. Default: 400')
-    parser.add_argument('--suffix', type=str, default=None, help='Suffix of the restored faces. Default: None')
-    parser.add_argument('--save_video_fps', type=float, default=None, help='Frame rate for saving video. Default: None')
+    parser.add_argument('--bg_tile', type=int, default=400, help='Tile size for background sampler. Default: 400') # 切割图像块
+    parser.add_argument('--suffix', type=str, default=None, help='Suffix of the restored faces. Default: None') # 后缀
+    parser.add_argument('--save_video_fps', type=float, default=None, help='Frame rate for saving video. Default: None') # 视频帧率
 
     args = parser.parse_args()
 
     # ------------------------ input & output ------------------------
     w = args.fidelity_weight
-    input_video = False
+    input_video = False # 是否输入是视频
     if args.input_path.endswith(('jpg', 'jpeg', 'png', 'JPG', 'JPEG', 'PNG')): # input single img path
         input_img_list = [args.input_path]
         result_root = f'results/test_img_{w}'
@@ -133,7 +148,7 @@ if __name__ == '__main__':
 
     # ------------------ set up CodeFormer restorer -------------------
     net = ARCH_REGISTRY.get('CodeFormer')(dim_embd=512, codebook_size=1024, n_head=8, n_layers=9, 
-                                            connect_list=['32', '64', '128', '256']).to(device)
+                                            connect_list=['32', '64', '128', '256']).to(device) # ARCH_REGISTRY 是一个模型注册表，它在深度学习框架中用于管理和访问各种模型架构。
     
     # ckpt_path = 'weights/CodeFormer/codeformer.pth'
     ckpt_path = load_file_from_url(url=pretrain_model_url['restoration'], 
@@ -179,7 +194,7 @@ if __name__ == '__main__':
 
         if args.has_aligned: 
             # the input faces are already cropped and aligned
-            img = cv2.resize(img, (512, 512), interpolation=cv2.INTER_LINEAR)
+            img = cv2.resize(img, (512, 512), interpolation=cv2.INTER_LINEAR) # 512x512
             face_helper.is_gray = is_gray(img, threshold=10)
             if face_helper.is_gray:
                 print('Grayscale input: True')
@@ -205,12 +220,12 @@ if __name__ == '__main__':
                     output = net(cropped_face_t, w=w, adain=True)[0]
                     restored_face = tensor2img(output, rgb2bgr=True, min_max=(-1, 1))
                 del output
-                torch.cuda.empty_cache()
+                torch.cuda.empty_cache() # 清理 GPU 上未使用的缓存内存，释放显存，以防止内存溢出。
             except Exception as error:
                 print(f'\tFailed inference for CodeFormer: {error}')
                 restored_face = tensor2img(cropped_face_t, rgb2bgr=True, min_max=(-1, 1))
 
-            restored_face = restored_face.astype('uint8')
+            restored_face = restored_face.astype('uint8') # 将恢复后的面部图像转换为 uint8 类型，以便于后续保存或显示。
             face_helper.add_restored_face(restored_face, cropped_face)
 
         # paste_back

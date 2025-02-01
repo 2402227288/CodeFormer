@@ -16,7 +16,7 @@ def normalize(in_channels):
     
 
 @torch.jit.script
-def swish(x):
+def swish(x): # Swish 激活函数 
     return x*torch.sigmoid(x)
 
 
@@ -28,36 +28,36 @@ class VectorQuantizer(nn.Module):
         self.emb_dim = emb_dim  # dimension of embedding
         self.beta = beta  # commitment cost used in loss term, beta * ||z_e(x)-sg[e]||^2
         self.embedding = nn.Embedding(self.codebook_size, self.emb_dim)
-        self.embedding.weight.data.uniform_(-1.0 / self.codebook_size, 1.0 / self.codebook_size)
+        self.embedding.weight.data.uniform_(-1.0 / self.codebook_size, 1.0 / self.codebook_size) # 每个嵌入向量的初始值将在区间 [-1.0 / self.codebook_size, 1.0 / self.codebook_size] 内均匀分布。
 
     def forward(self, z):
         # reshape z -> (batch, height, width, channel) and flatten
-        z = z.permute(0, 2, 3, 1).contiguous()
-        z_flattened = z.view(-1, self.emb_dim)
+        z = z.permute(0, 2, 3, 1).contiguous() # torch.Size([4, 256, 16, 16])
+        z_flattened = z.view(-1, self.emb_dim) # torch.Size([1024, 256])
 
         # distances from z to embeddings e_j (z - e)^2 = z^2 + e^2 - 2 e * z
         d = (z_flattened ** 2).sum(dim=1, keepdim=True) + (self.embedding.weight**2).sum(1) - \
-            2 * torch.matmul(z_flattened, self.embedding.weight.t())
+            2 * torch.matmul(z_flattened, self.embedding.weight.t())  # torch.Size([1024, 1024])
 
-        mean_distance = torch.mean(d)
+        mean_distance = torch.mean(d) # tensor(81.4400, device='cuda:0', grad_fn=<MeanBackward0>)
         # find closest encodings
-        min_encoding_indices = torch.argmin(d, dim=1).unsqueeze(1)
+        min_encoding_indices = torch.argmin(d, dim=1).unsqueeze(1) # [1024,1]，由于每行是向量，所以找每行向量对应code的最近索引
         # min_encoding_scores, min_encoding_indices = torch.topk(d, 1, dim=1, largest=False)
         # [0-1], higher score, higher confidence
         # min_encoding_scores = torch.exp(-min_encoding_scores/10)
 
-        min_encodings = torch.zeros(min_encoding_indices.shape[0], self.codebook_size).to(z)
-        min_encodings.scatter_(1, min_encoding_indices, 1)
+        min_encodings = torch.zeros(min_encoding_indices.shape[0], self.codebook_size).to(z)# [1024,1024]
+        min_encodings.scatter_(1, min_encoding_indices, 1) # 1 表示将最小距离对应的索引位置设置为 1，其他位置仍然保持为 0。在行方向进行处理
 
         # get quantized latent vectors
-        z_q = torch.matmul(min_encodings, self.embedding.weight).view(z.shape)
+        z_q = torch.matmul(min_encodings, self.embedding.weight).view(z.shape) # 替换向量
         # compute loss for embedding
-        loss = torch.mean((z_q.detach()-z)**2) + self.beta * torch.mean((z_q - z.detach()) ** 2)
+        loss = torch.mean((z_q.detach()-z)**2) + self.beta * torch.mean((z_q - z.detach()) ** 2) # 码本损失
         # preserve gradients
-        z_q = z + (z_q - z).detach()
+        z_q = z + (z_q - z).detach() # 传递梯度，解码器传递到编码器
 
         # perplexity
-        e_mean = torch.mean(min_encodings, dim=0)
+        e_mean = torch.mean(min_encodings, dim=0) # 如果困惑度较低，意味着量化后的代码本使用了较少的嵌入，表示嵌入空间利用不充分。这里通过对最小编码的均值计算困惑度。这里是计算每个向量被使用的频率
         perplexity = torch.exp(-torch.sum(e_mean * torch.log(e_mean + 1e-10)))
         # reshape back to match original input shape
         z_q = z_q.permute(0, 3, 1, 2).contiguous()
@@ -69,7 +69,7 @@ class VectorQuantizer(nn.Module):
             "mean_distance": mean_distance
             }
 
-    def get_codebook_feat(self, indices, shape):
+    def get_codebook_feat(self, indices, shape): # 通过给定的索引从代码本中提取特征。
         # input indices: batch*token_num -> (batch*token_num)*1
         # shape: batch, height, width, channel
         indices = indices.view(-1,1)
@@ -235,7 +235,7 @@ class Encoder(nn.Module):
         self.resolution = resolution
         self.attn_resolutions = attn_resolutions
 
-        curr_res = self.resolution
+        curr_res = self.resolution # 当前分辨率
         in_ch_mult = (1,)+tuple(ch_mult)
 
         blocks = []
@@ -334,11 +334,11 @@ class VQAutoEncoder(nn.Module):
         self.n_blocks = res_blocks 
         self.codebook_size = codebook_size
         self.embed_dim = emb_dim
-        self.ch_mult = ch_mult
+        self.ch_mult = ch_mult # 表示通道扩展倍数。
         self.resolution = img_size
         self.attn_resolutions = attn_resolutions
         self.quantizer_type = quantizer
-        self.encoder = Encoder(
+        self.encoder = Encoder( # 编码
             self.in_channels,
             self.nf,
             self.embed_dim,
@@ -347,8 +347,8 @@ class VQAutoEncoder(nn.Module):
             self.resolution,
             self.attn_resolutions
         )
-        if self.quantizer_type == "nearest":
-            self.beta = beta #0.25
+        if self.quantizer_type == "nearest": # 最近邻量化方法（VectorQuantizer）
+            self.beta = beta #0.25 平滑度
             self.quantize = VectorQuantizer(self.codebook_size, self.embed_dim, self.beta)
         elif self.quantizer_type == "gumbel":
             self.gumbel_num_hiddens = emb_dim
@@ -361,7 +361,7 @@ class VQAutoEncoder(nn.Module):
                 self.straight_through,
                 self.kl_weight
             )
-        self.generator = Generator(
+        self.generator = Generator( # 解码
             self.nf, 
             self.embed_dim,
             self.ch_mult, 
@@ -385,7 +385,7 @@ class VQAutoEncoder(nn.Module):
     def forward(self, x):
         x = self.encoder(x)
         quant, codebook_loss, quant_stats = self.quantize(x)
-        x = self.generator(quant)
+        x = self.generator(quant) # 生成的x
         return x, codebook_loss, quant_stats
 
 

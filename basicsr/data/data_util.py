@@ -235,8 +235,8 @@ def paths_from_folder(folder):
         list[str]: Returned path list.
     """
 
-    paths = list(scandir(folder))
-    paths = [osp.join(folder, path) for path in paths]
+    paths = list(scandir(folder)) # 列出目录下所有文件名
+    paths = [osp.join(folder, path) for path in paths] # 将文件名和目录组合成一个列表
     return paths
 
 

@@ -21,6 +21,6 @@ def build_loss(opt):
     opt = deepcopy(opt)
     loss_type = opt.pop('type')
     loss = LOSS_REGISTRY.get(loss_type)(**opt)
-    logger = get_root_logger()
+    logger = get_root_logger() # 全局日志记录器
     logger.info(f'Loss [{loss.__class__.__name__}] is created.')
     return loss

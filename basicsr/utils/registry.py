@@ -1,7 +1,7 @@
 # Modified from: https://github.com/facebookresearch/fvcore/blob/master/fvcore/common/registry.py  # noqa: E501
 
 
-class Registry():
+class Registry(): # 注册表类 Registry
     """
     The registry that provides name -> object mapping, to support third-party
     users' custom modules.
@@ -32,8 +32,8 @@ class Registry():
         Args:
             name (str): the name of this registry
         """
-        self._name = name
-        self._obj_map = {}
+        self._name = name # 注册表标识
+        self._obj_map = {} # 存储注册的对象和它们对应的名称映射
 
     def _do_register(self, name, obj):
         assert (name not in self._obj_map), (f"An object named '{name}' was already registered "

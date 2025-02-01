@@ -252,7 +252,7 @@ class PerceptualLoss(nn.Module):
         gram = features.bmm(features_t) / (c * h * w)
         return gram
 
-
+# 这行代码是一个装饰器，它将 LPIPSLoss 类注册到一个名为 LOSS_REGISTRY 的注册表中。通过注册，LPIPSLoss 可以被作为损失函数动态调用。
 @LOSS_REGISTRY.register()
 class LPIPSLoss(nn.Module):
     def __init__(self, 
@@ -266,8 +266,8 @@ class LPIPSLoss(nn.Module):
         self.range_norm = range_norm
 
         if self.use_input_norm:
-            # the mean is for image with range [0, 1]
-            self.register_buffer('mean', torch.Tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
+            # the mean is for image with range [0, 1] 
+            self.register_buffer('mean', torch.Tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)) # 将均值 mean 注册为缓冲区（buffer）
             # the std is for image with range [0, 1]
             self.register_buffer('std', torch.Tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
 
@@ -297,13 +297,13 @@ class GANLoss(nn.Module):
 
     def __init__(self, gan_type, real_label_val=1.0, fake_label_val=0.0, loss_weight=1.0):
         super(GANLoss, self).__init__()
-        self.gan_type = gan_type
-        self.loss_weight = loss_weight
-        self.real_label_val = real_label_val
-        self.fake_label_val = fake_label_val
+        self.gan_type = gan_type # 字符串类型，表示 GAN 的类型，支持的类型有 'vanilla'、'lsgan'、'wgan'、'hinge' 等。
+        self.loss_weight = loss_weight #
+        self.real_label_val = real_label_val # 实际标签的值，默认为 1.0，用于表示真实样本。
+        self.fake_label_val = fake_label_val # 伪标签的值，默认为 0.0，用于表示生成样本。
 
         if self.gan_type == 'vanilla':
-            self.loss = nn.BCEWithLogitsLoss()
+            self.loss = nn.BCEWithLogitsLoss() # 标准的二元交叉熵损失
         elif self.gan_type == 'lsgan':
             self.loss = nn.MSELoss()
         elif self.gan_type == 'wgan':
@@ -311,8 +311,8 @@ class GANLoss(nn.Module):
         elif self.gan_type == 'wgan_softplus':
             self.loss = self._wgan_softplus_loss
         elif self.gan_type == 'hinge':
-            self.loss = nn.ReLU()
-        else:
+            self.loss = nn.ReLU() # 使用 hinge 损失。
+        else: 
             raise NotImplementedError(f'GAN type {self.gan_type} is not implemented.')
 
     def _wgan_loss(self, input, target):
@@ -374,7 +374,7 @@ class GANLoss(nn.Module):
             Tensor: GAN loss value.
         """
         if self.gan_type == 'hinge':
-            if is_disc:  # for discriminators in hinge-gan
+            if is_disc:  # for discriminators in hinge-gan 如果当前是计算判别器（discriminator）的损失（is_disc=True），则进入这个分支，处理判别器的损失。
                 input = -input if target_is_real else input
                 loss = self.loss(1 + input).mean()
             else:  # for generators in hinge-gan

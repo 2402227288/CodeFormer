@@ -18,7 +18,7 @@ class SRModel(BaseModel):
         super(SRModel, self).__init__(opt)
 
         # define network
-        self.net_g = build_network(opt['network_g'])
+        self.net_g = build_network(opt['network_g'])# 定义网络g
         self.net_g = self.model_to_device(self.net_g)
         self.print_network(self.net_g)
 
@@ -29,7 +29,7 @@ class SRModel(BaseModel):
             self.load_network(self.net_g, load_path, self.opt['path'].get('strict_load_g', True), param_key)
 
         if self.is_train:
-            self.init_training_settings()
+            self.init_training_settings() # 训练设置，定义了network_d和network_g，损失函数以及优化器和调度器
 
     def init_training_settings(self):
         self.net_g.train()

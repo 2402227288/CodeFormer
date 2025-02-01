@@ -29,17 +29,17 @@ class VQGANModel(SRModel):
             # define network net_g with Exponential Moving Average (EMA)
             # net_g_ema is used only for testing on one GPU and saving
             # There is no need to wrap with DistributedDataParallel
-            self.net_g_ema = build_network(self.opt['network_g']).to(self.device)
+            self.net_g_ema = build_network(self.opt['network_g']).to(self.device) # VQAutoEncoder
             # load pretrained model
             load_path = self.opt['path'].get('pretrain_network_g', None)
             if load_path is not None:
                 self.load_network(self.net_g_ema, load_path, self.opt['path'].get('strict_load_g', True), 'params_ema')
             else:
-                self.model_ema(0)  # copy net_g weight
+                self.model_ema(0)  # copy net_g weight，没有进行指数加权平均
             self.net_g_ema.eval()
 
         # define network net_d
-        self.net_d = build_network(self.opt['network_d'])
+        self.net_d = build_network(self.opt['network_d']) # VQGANDiscriminator
         self.net_d = self.model_to_device(self.net_d)
         self.print_network(self.net_d)
 
@@ -48,8 +48,8 @@ class VQGANModel(SRModel):
         if load_path is not None:
             self.load_network(self.net_d, load_path, self.opt['path'].get('strict_load_d', True))
 
-        self.net_g.train()
-        self.net_d.train()
+        self.net_g.train() # 生成器
+        self.net_d.train() # 判别器
 
         # define losses
         if train_opt.get('pixel_opt'):
@@ -73,16 +73,17 @@ class VQGANModel(SRModel):
         self.vqgan_quantizer = self.opt['network_g']['quantizer']
         logger.info(f'vqgan_quantizer: {self.vqgan_quantizer}')
 
-        self.net_g_start_iter = train_opt.get('net_g_start_iter', 0)
-        self.net_d_iters = train_opt.get('net_d_iters', 1)
-        self.net_d_start_iter = train_opt.get('net_d_start_iter', 0)
-        self.disc_weight = train_opt.get('disc_weight', 0.8)
+        self.net_g_start_iter = train_opt.get('net_g_start_iter', 0) # 生成器开始训练的迭代次数。 0
+        self.net_d_iters = train_opt.get('net_d_iters', 1) # 每次更新生成器之前，判别器更新的次数。1
+        self.net_d_start_iter = train_opt.get('net_d_start_iter', 0) # 判别器开始训练的迭代次数。 3001
+        self.disc_weight = train_opt.get('disc_weight', 0.8) # 判别器的损失权重（默认值为 0.8）。0.8
 
         # set up optimizers and schedulers
-        self.setup_optimizers()
+        self.setup_optimizers() # 优化器初始化
         self.setup_schedulers()
 
     def calculate_adaptive_weight(self, recon_loss, g_loss, last_layer, disc_weight_max):
+        # 自适应权重计算方法，用于在 生成对抗网络（GAN） 训练时 动态平衡 重建损失（recon_loss） 和 对抗损失（g_loss）
         recon_grads = torch.autograd.grad(recon_loss, last_layer, retain_graph=True)[0]
         g_grads = torch.autograd.grad(g_loss, last_layer, retain_graph=True)[0]
 
@@ -105,34 +106,36 @@ class VQGANModel(SRModel):
             else:
                 logger = get_root_logger()
                 logger.warning(f'Params {k} will not be optimized.')
-        optim_type = train_opt['optim_g'].pop('type')
+        optim_type = train_opt['optim_g'].pop('type') # adam
         self.optimizer_g = self.get_optimizer(optim_type, optim_params_g, **train_opt['optim_g'])
         self.optimizers.append(self.optimizer_g)
         # optimizer d
-        optim_type = train_opt['optim_d'].pop('type')
+        optim_type = train_opt['optim_d'].pop('type') # adam
         self.optimizer_d = self.get_optimizer(optim_type, self.net_d.parameters(), **train_opt['optim_d'])
         self.optimizers.append(self.optimizer_d)
 
 
     def optimize_parameters(self, current_iter):
         logger = get_root_logger()
-        loss_dict = OrderedDict()
-        if self.opt['network_g']['quantizer'] == 'gumbel':
+        loss_dict = OrderedDict() # 记录各项损失的有序函数
+        if self.opt['network_g']['quantizer'] == 'gumbel': # nearnest不进行操作
             self.net_g.module.quantize.temperature = max(1/16, ((-1/160000) * current_iter) + 1)
             if current_iter%1000 == 0:
                 logger.info(f'temperature: {self.net_g.module.quantize.temperature}')
 
-        # optimize net_g
+        # optimize net_g 暂时冻结判别器 net_d 的参数，以便只更新 net_g（生成器）。
         for p in self.net_d.parameters():
             p.requires_grad = False
 
         self.optimizer_g.zero_grad()
-        self.output, l_codebook, quant_stats = self.net_g(self.gt)
+        self.output, l_codebook, quant_stats = self.net_g(self.gt) # self.output生成图像(fake)，l_codebook码本损失，quant_stats量化相关的统计信息
 
         l_codebook = l_codebook*self.l_weight_codebook
 
         l_g_total = 0
         if current_iter % self.net_d_iters == 0 and current_iter > self.net_g_start_iter:
+            # 仅在 current_iter 是 self.net_d_iters 的倍数时优化 G。
+            # current_iter 必须大于 self.net_g_start_iter（确保 G 已开始训练）。
             # pixel loss
             if self.cri_pix:
                 l_g_pix = self.cri_pix(self.output, self.gt)
@@ -148,17 +151,17 @@ class VQGANModel(SRModel):
             if current_iter > self.net_d_start_iter:
                 # fake_g_pred = self.net_d(self.output_1024)
                 fake_g_pred = self.net_d(self.output)
-                l_g_gan = self.cri_gan(fake_g_pred, True, is_disc=False)
-                recon_loss = l_g_total
+                l_g_gan = self.cri_gan(fake_g_pred, True, is_disc=False) # 生成器损失，fake_g_pred越大越好
+                recon_loss = l_g_total # 重建loss
                 last_layer = self.net_g.module.generator.blocks[-1].weight
-                d_weight = self.calculate_adaptive_weight(recon_loss, l_g_gan, last_layer, disc_weight_max=1.0)
+                d_weight = self.calculate_adaptive_weight(recon_loss, l_g_gan, last_layer, disc_weight_max=1.0) # 梯度计算自适应权重
                 d_weight *= self.adopt_weight(1, current_iter, self.net_d_start_iter)
                 d_weight *= self.disc_weight # tamming setting 0.8
                 l_g_total += d_weight * l_g_gan
                 loss_dict['l_g_gan'] = d_weight * l_g_gan
 
             l_g_total += l_codebook
-            loss_dict['l_codebook'] = l_codebook
+            loss_dict['l_codebook'] = l_codebook # 码本损失
 
             l_g_total.backward()
             self.optimizer_g.step()
@@ -170,13 +173,13 @@ class VQGANModel(SRModel):
 
             self.optimizer_d.zero_grad()
             # real
-            real_d_pred = self.net_d(self.gt)
-            l_d_real = self.cri_gan(real_d_pred, True, is_disc=True)
+            real_d_pred = self.net_d(self.gt) # 判别GT图像
+            l_d_real = self.cri_gan(real_d_pred, True, is_disc=True) # 判别器损失
             loss_dict['l_d_real'] = l_d_real
             loss_dict['out_d_real'] = torch.mean(real_d_pred.detach())
             l_d_real.backward()
             # fake
-            fake_d_pred = self.net_d(self.output.detach())
+            fake_d_pred = self.net_d(self.output.detach()) # 判别生成样本
             l_d_fake = self.cri_gan(fake_d_pred, False, is_disc=True)
             loss_dict['l_d_fake'] = l_d_fake
             loss_dict['out_d_fake'] = torch.mean(fake_d_pred.detach())

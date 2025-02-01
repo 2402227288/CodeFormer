@@ -13,15 +13,15 @@ from facelib.utils.misc import is_gray
 from basicsr.utils.registry import ARCH_REGISTRY
 
 
-## 调试
-import debugpy
-try:
-    # 5678 is the default attach port in the VS Code debug configurations. Unless a host and port are specified, host defaults to 127.0.0.1
-    debugpy.listen(("localhost", 9501))
-    print("Waiting for debugger attach")
-    debugpy.wait_for_client()
-except Exception as e:
-    pass
+# ## 调试
+# import debugpy
+# try:
+#     # 5678 is the default attach port in the VS Code debug configurations. Unless a host and port are specified, host defaults to 127.0.0.1
+#     debugpy.listen(("localhost", 9501))
+#     print("Waiting for debugger attach")
+#     debugpy.wait_for_client()
+# except Exception as e:
+#     pass
 
 pretrain_model_url = {
     'restoration': 'https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth',

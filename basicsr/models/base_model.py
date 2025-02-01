@@ -48,15 +48,29 @@ class BaseModel():
         else:
             self.nondist_validation(dataloader, current_iter, tb_logger, save_img)
 
-    def model_ema(self, decay=0.999):
+    def model_ema(self, decay=0.999): #  指数移动平均（EMA） 机制
         net_g = self.get_bare_model(self.net_g)
 
         net_g_params = dict(net_g.named_parameters())
         net_g_ema_params = dict(self.net_g_ema.named_parameters())
 
         for k in net_g_ema_params.keys():
-            net_g_ema_params[k].data.mul_(decay).add_(net_g_params[k].data, alpha=1 - decay)
+            net_g_ema_params[k].data.mul_(decay).add_(net_g_params[k].data, alpha=1 - decay) # 注意这里decay=0
+    # def model_ema(self, decay=0.999):
+    #     # 获取没有 DDP (分布式数据并行) 包裹的网络模型
+    #     net_g = self.get_bare_model(self.net_g)
 
+    #     # 获取当前模型（net_g）的参数字典
+    #     net_g_params = dict(net_g.named_parameters())
+
+    #     # 获取EMA模型（net_g_ema）的参数字典
+    #     net_g_ema_params = dict(self.net_g_ema.named_parameters())
+
+    #     # 遍历 net_g_ema 的每一个参数，并根据 EMA 更新规则调整其参数
+    #     for k in net_g_ema_params.keys():
+    #         # 使用当前参数（net_g）的权重来更新 net_g_ema 的权重 new_param=old_param×decay+new_param_from_net_g×(1−decay)
+    #         net_g_ema_params[k].data.mul_(decay).add_(net_g_params[k].data, alpha=1 - decay)
+   
     def get_current_log(self):
         return self.log_dict
 
@@ -92,7 +106,7 @@ class BaseModel():
                 self.schedulers.append(lr_scheduler.MultiStepRestartLR(optimizer, **train_opt['scheduler']))
         elif scheduler_type == 'CosineAnnealingRestartLR':
             for optimizer in self.optimizers:
-                self.schedulers.append(lr_scheduler.CosineAnnealingRestartLR(optimizer, **train_opt['scheduler']))
+                self.schedulers.append(lr_scheduler.CosineAnnealingRestartLR(optimizer, **train_opt['scheduler']))# 等价于lr_scheduler.CosineAnnealingRestartLR(optimizer, periods=[1600000], eta_min=6e-5, restart_weights=[1])
         else:
             raise NotImplementedError(f'Scheduler {scheduler_type} is not implemented yet.')
 

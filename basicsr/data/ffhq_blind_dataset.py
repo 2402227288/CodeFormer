@@ -23,17 +23,17 @@ class FFHQBlindDataset(data.Dataset):
         logger = get_root_logger()
         self.opt = opt
         # file client (io backend)
-        self.file_client = None
-        self.io_backend_opt = opt['io_backend']
+        self.file_client = None 
+        self.io_backend_opt = opt['io_backend'] # disk
 
-        self.gt_folder = opt['dataroot_gt']
-        self.gt_size = opt.get('gt_size', 512)
-        self.in_size = opt.get('in_size', 512)
+        self.gt_folder = opt['dataroot_gt']    # GT路径
+        self.gt_size = opt.get('gt_size', 512) # Ground Truth 图像尺寸
+        self.in_size = opt.get('in_size', 512) # 输入图像尺寸
         assert self.gt_size >= self.in_size, 'Wrong setting.'
         
         self.mean = opt.get('mean', [0.5, 0.5, 0.5])
         self.std = opt.get('std', [0.5, 0.5, 0.5])
-
+        #不用管
         self.component_path = opt.get('component_path', None)
         self.latent_gt_path = opt.get('latent_gt_path', None)
 
@@ -51,7 +51,7 @@ class FFHQBlindDataset(data.Dataset):
             self.latent_gt_dict = torch.load(self.latent_gt_path)
         else:
             self.load_latent_gt = False  
-
+            
         if self.io_backend_opt['type'] == 'lmdb':
             self.io_backend_opt['db_paths'] = self.gt_folder
             if not self.gt_folder.endswith('.lmdb'):
@@ -59,10 +59,10 @@ class FFHQBlindDataset(data.Dataset):
             with open(osp.join(self.gt_folder, 'meta_info.txt')) as fin:
                 self.paths = [line.split('.')[0] for line in fin]
         else:
-            self.paths = paths_from_folder(self.gt_folder)
+            self.paths = paths_from_folder(self.gt_folder) # 执行这个
 
-        # inpainting mask
-        self.gen_inpaint_mask = opt.get('gen_inpaint_mask', False)
+        # inpainting mask 生成修复 Mask（用于 Inpainting 任务）
+        self.gen_inpaint_mask = opt.get('gen_inpaint_mask', False) # false
         if self.gen_inpaint_mask:
             logger.info(f'generate mask ...')
             # self.mask_max_angle = opt.get('mask_max_angle', 10)
@@ -76,7 +76,7 @@ class FFHQBlindDataset(data.Dataset):
             # logger.info(f'mask_draw_times: {self.mask_draw_times}')
 
         # perform corrupt
-        self.use_corrupt = opt.get('use_corrupt', True)
+        self.use_corrupt = opt.get('use_corrupt', True) # false
         self.use_motion_kernel = False
         # self.use_motion_kernel = opt.get('use_motion_kernel', True)
 
@@ -100,7 +100,7 @@ class FFHQBlindDataset(data.Dataset):
             logger.info(f'Noise: [{", ".join(map(str, self.noise_range))}]')
             logger.info(f'JPEG compression: [{", ".join(map(str, self.jpeg_range))}]')
 
-        # color jitter
+        # color jitter 颜色抖动
         self.color_jitter_prob = opt.get('color_jitter_prob', None)
         self.color_jitter_pt_prob = opt.get('color_jitter_pt_prob', None)
         self.color_jitter_shift = opt.get('color_jitter_shift', 20)
@@ -178,13 +178,13 @@ class FFHQBlindDataset(data.Dataset):
 
     def __getitem__(self, index):
         if self.file_client is None:
-            self.file_client = FileClient(self.io_backend_opt.pop('type'), **self.io_backend_opt)
-
+            self.file_client = FileClient(self.io_backend_opt.pop('type'), **self.io_backend_opt) # FileClient 负责 从磁盘/LMDB 读取图像文件。
+        # self.io_backend_opt.pop('type') 指定文件存储格式（如 "disk" 或 "lmdb"）。
         # load gt image
-        gt_path = self.paths[index]
-        name = osp.basename(gt_path)[:-4]
-        img_bytes = self.file_client.get(gt_path)
-        img_gt = imfrombytes(img_bytes, float32=True)
+        gt_path = self.paths[index] 
+        name = osp.basename(gt_path)[:-4] #  osp.basename返回文件名，并且去除文件扩展名
+        img_bytes = self.file_client.get(gt_path) # 从磁盘/LMDB 加载图像的二进制数据。
+        img_gt = imfrombytes(img_bytes, float32=True) # 将二进制数据转换为 float32 类型的 NumPy 数组（归一化到 [0, 1]）
         
         # random horizontal flip
         img_gt, status = augment(img_gt, hflip=self.opt['use_hflip'], rotation=False, return_status=True)
@@ -281,6 +281,12 @@ class FFHQBlindDataset(data.Dataset):
         normalize(img_gt, self.mean, self.std, inplace=True)
 
         return_dict = {'in': img_in, 'gt': img_gt, 'gt_path': gt_path}
+        # {
+        #     'in': img_in,   # 低质量输入图像（Tensor）
+        #     'gt': img_gt,   # 高质量Ground Truth（Tensor）
+        #     'gt_path': gt_path  # GT图像路径（字符串）
+        # }
+
 
         if self.crop_components:
             return_dict['locations_in'] = locations_in

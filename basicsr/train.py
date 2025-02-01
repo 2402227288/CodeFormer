@@ -21,6 +21,31 @@ import warnings
 # ignore UserWarning: Detected call of `lr_scheduler.step()` before `optimizer.step()`.
 warnings.filterwarnings("ignore", category=UserWarning)
 
+
+
+# 调试
+import debugpy
+try:
+    # 5678 is the default attach port in the VS Code debug configurations. Unless a host and port are specified, host defaults to 127.0.0.1
+    debugpy.listen(("localhost", 9501))
+    print("Waiting for debugger attach")
+    debugpy.wait_for_client()
+except Exception as e:
+    pass
+
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,5"
+
+# import torch
+
+# # 查看可用的GPU数量
+# print(torch.cuda.device_count())
+
+# # 查看每个 GPU 的名称
+# for i in range(torch.cuda.device_count()):
+#     print(torch.cuda.get_device_name(i))
+
+
 def parse_options(root_path, is_train=True):
     parser = argparse.ArgumentParser()
     parser.add_argument('-opt', type=str, required=True, help='Path to option YAML file.')
@@ -73,7 +98,7 @@ def create_train_val_dataloader(opt, logger):
     train_loader, val_loader = None, None
     for phase, dataset_opt in opt['datasets'].items():
         if phase == 'train':
-            dataset_enlarge_ratio = dataset_opt.get('dataset_enlarge_ratio', 1)
+            dataset_enlarge_ratio = dataset_opt.get('dataset_enlarge_ratio', 1) # 这个参数用于控制数据集的扩展比例。例如，如果设为 100，则训练数据会被扩展为原来的 100 倍。
             train_set = build_dataset(dataset_opt)
             train_sampler = EnlargedSampler(train_set, opt['world_size'], opt['rank'], dataset_enlarge_ratio)
             train_loader = build_dataloader(
@@ -144,7 +169,7 @@ def train_pipeline(root_path):
         start_epoch = resume_state['epoch']
         current_iter = resume_state['iter']
     else:
-        model = build_model(opt)
+        model = build_model(opt) # 这一步定义了VQGAN等模型，进行了优化器和调度器的配置
         start_epoch = 0
         current_iter = 0
 
@@ -153,7 +178,7 @@ def train_pipeline(root_path):
 
     # dataloader prefetcher
     prefetch_mode = opt['datasets']['train'].get('prefetch_mode')
-    if prefetch_mode is None or prefetch_mode == 'cpu':
+    if prefetch_mode is None or prefetch_mode == 'cpu': # 使用CPU取
         prefetcher = CPUPrefetcher(train_loader)
     elif prefetch_mode == 'cuda':
         prefetcher = CUDAPrefetcher(train_loader, opt)
@@ -170,8 +195,8 @@ def train_pipeline(root_path):
 
     for epoch in range(start_epoch, total_epochs + 1):
         train_sampler.set_epoch(epoch)
-        prefetcher.reset()
-        train_data = prefetcher.next()
+        prefetcher.reset() # 重置数据预取器 prefetcher，使其从头读取数据。
+        train_data = prefetcher.next() # 获取当前 batch 的数据（如果有）。
 
         while train_data is not None:
             data_time = time.time() - data_time
@@ -180,10 +205,10 @@ def train_pipeline(root_path):
             if current_iter > total_iters:
                 break
             # update learning rate
-            model.update_learning_rate(current_iter, warmup_iter=opt['train'].get('warmup_iter', -1))
+            model.update_learning_rate(current_iter, warmup_iter=opt['train'].get('warmup_iter', -1)) # 调度器更新
             # training
-            model.feed_data(train_data)
-            model.optimize_parameters(current_iter)
+            model.feed_data(train_data) # 取数据
+            model.optimize_parameters(current_iter) # 更新参数
             iter_time = time.time() - iter_time
             # log
             if current_iter % opt['logger']['print_freq'] == 0:
